@@ -9,6 +9,7 @@ on:
         type: choice
         options:
           - ''
+          - 'Golden Gate'
           - 'Tahoe'
           - 'Sequoia'
           - 'Sonoma'
@@ -32,6 +33,11 @@ on:
           - ''
           - 'iso'
           - 'dmg'
+      bypass_checks:
+        description: "Skip the preflight checks (star requirement) and build right away."
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   preflight:
@@ -47,6 +53,11 @@ jobs:
         run: |
           echo "_build=false" >> $GITHUB_OUTPUT
           sum() { printf '%s\n' "$@" >> "$GITHUB_STEP_SUMMARY"; }
+
+          if [ "${{ inputs.bypass_checks }}" = "true" ]; then
+            echo "_build=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
           # Third time's the charm
           if [ ${{ github.run_attempt }} -ge 3 ] || [ ${{ github.run_number }} -ge 3 ]; then
@@ -92,7 +103,8 @@ jobs:
   build-macos-image:
     needs: preflight
     if: needs.preflight.outputs._build == 'true'
-    runs-on: macos-15-intel
+    # Golden Gate is Apple silicon only, softwareupdate won't offer it on Intel
+    runs-on: ${{ inputs.macos_version == 'Golden Gate' && 'macos-latest' || 'macos-15-intel' }}
     timeout-minutes: 80
 
     steps:

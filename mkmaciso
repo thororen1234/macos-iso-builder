@@ -8,7 +8,7 @@
 # Goals:
 #   - Use only macOS built-in tools and commands.
 #   - Download macOS installers exclusively from official Apple sources.
-#   - Support macOS 10.7 Lion through macOS 26 Tahoe installers.
+#   - Support macOS 10.7 Lion through macOS 27 Golden Gate installers.
 #   - Produce the smallest possible installer images for both formats.
 #   - The image must be usable on Windows and Linux.
 #
@@ -186,6 +186,7 @@ get_version_number() {
         "sonoma") echo "14" ;;
         "sequoia") echo "15" ;;
         "tahoe") echo "26" ;;
+        "goldengate") echo "27" ;;
         *) echo "" ;;
     esac
 }
@@ -209,6 +210,7 @@ get_codename() {
         "14") echo "Sonoma" ;;
         "15") echo "Sequoia" ;;
         "26") echo "Tahoe" ;;
+        "27") echo "Golden_Gate" ;;
         *) echo "" ;;
     esac
 }
@@ -263,6 +265,15 @@ get_installer_app_name() {
         "26")
             echo "Install macOS Tahoe"
             ;;
+        "27")
+            # Apple has shipped this app both with and without the version
+            # number in its name - use whichever one is installed
+            local app
+            for app in "/Applications/Install macOS Golden Gate.app" "/Applications/Install macOS 27 Golden Gate.app"; do
+                [ -d "$app" ] && basename "$app" .app && return
+            done
+            echo "Install macOS Golden Gate"
+            ;;
         *)
             echo ""
             ;;
@@ -305,6 +316,7 @@ declare -a MACOS_VERSIONS=(
     "14|Sonoma|2023"
     "15|Sequoia|2024"
     "26|Tahoe|2025"
+    "27|Golden Gate|2026"
 )
 
 show_version_menu() {
@@ -345,7 +357,7 @@ show_version_menu() {
     echo ""
     print_separator
     echo ""
-    echo -e "  ${YELLOW}Default: 16 (Tahoe - latest)${NC}"
+    echo -e "  ${YELLOW}Default: 16 (Tahoe - latest for Intel Macs)${NC}"
     echo ""
     echo -n "  Enter your choice [2-$((total+1))] or press Enter for default: "
 }
@@ -903,6 +915,12 @@ download_modern_macos() {
         log_warn "╚═════════════════════════════════════════════════════════════════╝"
     fi
     
+    # macOS 27 and later are Apple silicon only, softwareupdate won't list them on Intel
+    if [ "$CPU_ARCH" = "x86_64" ] && [ "${version_num%%.*}" -ge 27 ]; then
+        log_error "macOS $version_name ($version_num) requires Apple silicon and can't be downloaded on an Intel Mac"
+        return 1
+    fi
+
     log_info "Fetching available macOS installers..."
     softwareupdate --list-full-installers 2>/dev/null | grep "* Title:" | sed 's/^[[:space:]]*//' > "$WORK_DIR/installers.txt"
     
@@ -1430,8 +1448,8 @@ main() {
         log_info "Run with -h or --help for usage"
         echo ""
         log_error "Unknown macOS version: $VERSION"
-        log_info "Supported versions: 10.7, 10.8, 10.9, 10.10, 10.11, 10.12, 10.13, 10.14, 10.15, 11, 12, 13, 14, 15, 26"
-        log_info "Supported codenames: lion, mountain-lion, mavericks, yosemite, el-capitan, sierra, high-sierra, mojave, catalina, big-sur, monterey, ventura, sonoma, sequoia, tahoe"
+        log_info "Supported versions: 10.7, 10.8, 10.9, 10.10, 10.11, 10.12, 10.13, 10.14, 10.15, 11, 12, 13, 14, 15, 26, 27"
+        log_info "Supported codenames: lion, mountain-lion, mavericks, yosemite, el-capitan, sierra, high-sierra, mojave, catalina, big-sur, monterey, ventura, sonoma, sequoia, tahoe, golden-gate"
         exit 1
     fi
     
@@ -1479,6 +1497,9 @@ main() {
             # Modern macOS (10.13 and later)
             download_modern_macos "$VERSION_NUM" || exit 1
         fi
+        
+        # Re-resolve in case the app name depends on what got installed
+        INSTALLER_PATH="/Applications/$(get_installer_app_name "$VERSION_NUM").app"
         
         if [ ! -d "$INSTALLER_PATH" ]; then
             log_error "Failed to install macOS installer app"
@@ -1574,6 +1595,7 @@ Supported versions:
   10.12 Sierra           14     Sonoma
   10.13 High Sierra      15     Sequoia
                          26     Tahoe
+                         27     Golden Gate (Apple silicon only)
 
 Examples:
   mkmaciso                              Interactive mode

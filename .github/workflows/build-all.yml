@@ -2,17 +2,29 @@ name: Build all ISO images
 
 on:
   workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Which images to build for every version."
+        required: true
+        type: choice
+        default: 'Both'
+        options:
+          - 'Both'
+          - 'Full Installer'
+          - 'Recovery'
 
 jobs:
   build-full-installer:
-    if: github.repository_owner == 'thororen1234'
+    if: github.repository_owner == 'thororen1234' && inputs.build_type != 'Recovery'
     name: Full Installer (${{ matrix.macos_version }})
-    runs-on: macos-15-intel
+    # Golden Gate is Apple silicon only, softwareupdate won't offer it on Intel
+    runs-on: ${{ matrix.macos_version == 'Golden Gate' && 'macos-latest' || 'macos-15-intel' }}
     timeout-minutes: 80
     strategy:
       fail-fast: false
       matrix:
         macos_version:
+          - 'Golden Gate'
           - 'Tahoe'
           - 'Sequoia'
           - 'Sonoma'
@@ -48,7 +60,7 @@ jobs:
           archive: false
 
   build-recovery-iso:
-    if: github.repository_owner == 'thororen1234'
+    if: github.repository_owner == 'thororen1234' && inputs.build_type != 'Full Installer'
     name: Recovery (${{ matrix.version_name }})
     runs-on: macos-latest
     timeout-minutes: 15

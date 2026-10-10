@@ -28,9 +28,12 @@ Check [Release page](https://github.com/LongQT-sea/mkmaciso/releases/latest) fir
 
 ## Supported versions
 
-Pretty much everything from OS X Lion (10.7, 2011) through the latest macOS Tahoe (26, 2025). Full list:
+Pretty much everything from OS X Lion (10.7, 2011) through the latest macOS Golden Gate (27, 2026). Full list:
 
-Lion, Mountain Lion, Mavericks, Yosemite, El Capitan, Sierra, High Sierra, Mojave, Catalina, Big Sur, Monterey, Ventura, Sonoma, Sequoia, Tahoe.
+Lion, Mountain Lion, Mavericks, Yosemite, El Capitan, Sierra, High Sierra, Mojave, Catalina, Big Sur, Monterey, Ventura, Sonoma, Sequoia, Tahoe, Golden Gate.
+
+> [!NOTE]
+> Golden Gate is Apple silicon only: it builds as a Full Installer image on an Apple silicon runner, but there's no Recovery ISO for it and it won't boot in x86 VMs.
 
 ---
 

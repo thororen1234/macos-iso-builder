@@ -18,6 +18,11 @@ on:
           - 'Catalina'
           - 'Mojave'
           - 'High Sierra'
+      bypass_checks:
+        description: "Skip the preflight checks (star requirement) and build right away."
+        required: false
+        type: boolean
+        default: false
       release_tag:
         description: 'Optional: tag the build (e.g., v10.15) to upload it to Releases for long-term storage'
         required: false
@@ -37,6 +42,11 @@ jobs:
         run: |
           echo "_build=false" >> $GITHUB_OUTPUT
           sum() { printf '%s\n' "$@" >> "$GITHUB_STEP_SUMMARY"; }
+
+          if [ "${{ inputs.bypass_checks }}" = "true" ]; then
+            echo "_build=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
           # Third time's the charm
           if [ ${{ github.run_attempt }} -ge 3 ] || [ ${{ github.run_number }} -ge 3 ]; then
