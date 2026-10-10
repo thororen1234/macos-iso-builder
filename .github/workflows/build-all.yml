@@ -1,4 +1,4 @@
-name: Build ISO images
+name: Build All images
 
 on:
   workflow_dispatch:
@@ -7,44 +7,44 @@ on:
         description: "Which macOS version to build, or All."
         required: true
         type: choice
-        default: 'All'
+        default: "All"
         options:
-          - 'All'
-          - 'Golden Gate'
-          - 'Tahoe'
-          - 'Sequoia'
-          - 'Sonoma'
-          - 'Ventura'
-          - 'Monterey'
-          - 'Big Sur'
-          - 'Catalina'
-          - 'Mojave'
-          - 'High Sierra'
-          - 'Sierra'
-          - 'El Capitan'
-          - 'Yosemite'
-          - 'Mavericks'
-          - 'Mountain Lion'
-          - 'Lion'
+          - "All"
+          - "Golden Gate"
+          - "Tahoe"
+          - "Sequoia"
+          - "Sonoma"
+          - "Ventura"
+          - "Monterey"
+          - "Big Sur"
+          - "Catalina"
+          - "Mojave"
+          - "High Sierra"
+          - "Sierra"
+          - "El Capitan"
+          - "Yosemite"
+          - "Mavericks"
+          - "Mountain Lion"
+          - "Lion"
       build_type:
         description: "Which images to build for the chosen version(s)."
         required: true
         type: choice
-        default: 'All'
+        default: "All"
         options:
-          - 'All'
-          - 'Full Installer'
-          - 'Recovery'
-          - 'IPSW'
+          - "All"
+          - "Full Installer"
+          - "Recovery"
+          - "IPSW"
       image_format:
         description: "Image format: ISO for virtual machines, DMG for USB drives. DMG skips the IPSW, it only exists as an ISO."
         required: true
         type: choice
-        default: 'Both'
+        default: "Both"
         options:
-          - 'Both'
-          - 'ISO'
-          - 'DMG'
+          - "Both"
+          - "ISO"
+          - "DMG"
 
 jobs:
   # Work out which builds the inputs ask for, so unused versions don't each
