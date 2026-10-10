@@ -1,29 +1,15 @@
-name: Build all ISO images
+name: Build ISO images
 
 on:
   workflow_dispatch:
     inputs:
-      build_type:
-        description: "Which images to build for every version."
+      macos_version:
+        description: "Which macOS version to build, or All."
         required: true
         type: choice
-        default: 'Both'
+        default: 'All'
         options:
-          - 'Both'
-          - 'Full Installer'
-          - 'Recovery'
-
-jobs:
-  build-full-installer:
-    if: github.repository_owner == 'thororen1234' && inputs.build_type != 'Recovery'
-    name: Full Installer (${{ matrix.macos_version }})
-    # Golden Gate is Apple silicon only, softwareupdate won't offer it on Intel
-    runs-on: ${{ matrix.macos_version == 'Golden Gate' && 'macos-latest' || 'macos-15-intel' }}
-    timeout-minutes: 80
-    strategy:
-      fail-fast: false
-      matrix:
-        macos_version:
+          - 'All'
           - 'Golden Gate'
           - 'Tahoe'
           - 'Sequoia'
@@ -40,6 +26,113 @@ jobs:
           - 'Mavericks'
           - 'Mountain Lion'
           - 'Lion'
+      build_type:
+        description: "Which images to build for the chosen version(s)."
+        required: true
+        type: choice
+        default: 'All'
+        options:
+          - 'All'
+          - 'Full Installer'
+          - 'Recovery'
+          - 'IPSW'
+
+jobs:
+  # Work out which builds the inputs ask for, so unused versions don't each
+  # spin up a macOS runner just to skip
+  setup:
+    if: github.repository_owner == 'thororen1234'
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.select.outputs.full }}
+      recovery: ${{ steps.select.outputs.recovery }}
+      ipsw: ${{ steps.select.outputs.ipsw }}
+
+    steps:
+      - name: Select builds
+        id: select
+        env:
+          VERSION: ${{ inputs.macos_version }}
+          TYPE: ${{ inputs.build_type }}
+        run: |
+          FULL=$(cat <<'EOF'
+          [
+            { "macos_version": "Golden Gate" },
+            { "macos_version": "Tahoe" },
+            { "macos_version": "Sequoia" },
+            { "macos_version": "Sonoma" },
+            { "macos_version": "Ventura" },
+            { "macos_version": "Monterey" },
+            { "macos_version": "Big Sur" },
+            { "macos_version": "Catalina" },
+            { "macos_version": "Mojave" },
+            { "macos_version": "High Sierra" },
+            { "macos_version": "Sierra" },
+            { "macos_version": "El Capitan" },
+            { "macos_version": "Yosemite" },
+            { "macos_version": "Mavericks" },
+            { "macos_version": "Mountain Lion" },
+            { "macos_version": "Lion" }
+          ]
+          EOF
+          )
+
+          # No Golden Gate: Apple's recovery server only serves Intel boards
+          RECOVERY=$(cat <<'EOF'
+          [
+            { "macos_version": "Tahoe",       "version_name": "Tahoe",       "board_id": "Mac-CFF7D910A743CAAF", "model": "00000000000000000", "os_flag": "latest" },
+            { "macos_version": "Sequoia",     "version_name": "Sequoia",     "board_id": "Mac-7BA5B2D9E42DDD94", "model": "00000000000000000", "os_flag": "" },
+            { "macos_version": "Sonoma",      "version_name": "Sonoma",      "board_id": "Mac-827FAC58A8FDFA22", "model": "00000000000000000", "os_flag": "" },
+            { "macos_version": "Ventura",     "version_name": "Ventura",     "board_id": "Mac-B4831CEBD52A0C4C", "model": "00000000000000000", "os_flag": "" },
+            { "macos_version": "Monterey",    "version_name": "Monterey",    "board_id": "Mac-E43C1C25D4880AD6", "model": "00000000000000000", "os_flag": "" },
+            { "macos_version": "Big Sur",     "version_name": "Big_Sur",     "board_id": "Mac-2BD1B31983FE1663", "model": "00000000000000000", "os_flag": "" },
+            { "macos_version": "Catalina",    "version_name": "Catalina",    "board_id": "Mac-CFF7D910A743CAAF", "model": "00000000000PHCD00", "os_flag": "" },
+            { "macos_version": "Mojave",      "version_name": "Mojave",      "board_id": "Mac-7BA5B2DFE22DDD8C", "model": "00000000000KXPG00", "os_flag": "" },
+            { "macos_version": "High Sierra", "version_name": "High_Sierra", "board_id": "Mac-7BA5B2D9E42DDD94", "model": "00000000000J80300", "os_flag": "" }
+          ]
+          EOF
+          )
+
+          pick() { jq -c --arg v "$VERSION" '[.[] | select($v == "All" or .macos_version == $v)]'; }
+
+          full='[]'
+          recovery='[]'
+          ipsw=false
+          if [ "$TYPE" = "All" ] || [ "$TYPE" = "Full Installer" ]; then
+            full=$(echo "$FULL" | pick)
+          fi
+          if [ "$TYPE" = "All" ] || [ "$TYPE" = "Recovery" ]; then
+            recovery=$(echo "$RECOVERY" | pick)
+          fi
+          # The IPSW catalog only carries the latest release, which is Golden Gate
+          if { [ "$TYPE" = "All" ] || [ "$TYPE" = "IPSW" ]; } && { [ "$VERSION" = "All" ] || [ "$VERSION" = "Golden Gate" ]; }; then
+            ipsw=true
+          fi
+
+          echo "full=$full" >> $GITHUB_OUTPUT
+          echo "recovery=$recovery" >> $GITHUB_OUTPUT
+          echo "ipsw=$ipsw" >> $GITHUB_OUTPUT
+
+          {
+            echo "## Builds for $VERSION ($TYPE)"
+            echo ""
+            echo "- Full Installer: $(echo "$full" | jq -r 'map(.macos_version) | join(", ") | if . == "" then "none" else . end')"
+            echo "- Recovery: $(echo "$recovery" | jq -r 'map(.macos_version) | join(", ") | if . == "" then "none" else . end')"
+            echo "- IPSW: $ipsw"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-full-installer:
+    needs: setup
+    if: needs.setup.outputs.full != '[]'
+    name: Full Installer (${{ matrix.macos_version }})
+    # Golden Gate is Apple silicon only, softwareupdate won't offer it on Intel
+    runs-on: ${{ matrix.macos_version == 'Golden Gate' && 'macos-latest' || 'macos-15-intel' }}
+    timeout-minutes: 80
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.setup.outputs.full) }}
 
     steps:
       - name: Checkout repository
@@ -60,23 +153,15 @@ jobs:
           archive: false
 
   build-recovery-iso:
-    if: github.repository_owner == 'thororen1234' && inputs.build_type != 'Full Installer'
-    name: Recovery (${{ matrix.version_name }})
+    needs: setup
+    if: needs.setup.outputs.recovery != '[]'
+    name: Recovery (${{ matrix.macos_version }})
     runs-on: macos-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { version_name: 'Tahoe',       board_id: 'Mac-CFF7D910A743CAAF', model: '00000000000000000', os_flag: 'latest' }
-          - { version_name: 'Sequoia',     board_id: 'Mac-7BA5B2D9E42DDD94', model: '00000000000000000', os_flag: '' }
-          - { version_name: 'Sonoma',      board_id: 'Mac-827FAC58A8FDFA22', model: '00000000000000000', os_flag: '' }
-          - { version_name: 'Ventura',     board_id: 'Mac-B4831CEBD52A0C4C', model: '00000000000000000', os_flag: '' }
-          - { version_name: 'Monterey',    board_id: 'Mac-E43C1C25D4880AD6', model: '00000000000000000', os_flag: '' }
-          - { version_name: 'Big_Sur',     board_id: 'Mac-2BD1B31983FE1663', model: '00000000000000000', os_flag: '' }
-          - { version_name: 'Catalina',    board_id: 'Mac-CFF7D910A743CAAF', model: '00000000000PHCD00', os_flag: '' }
-          - { version_name: 'Mojave',      board_id: 'Mac-7BA5B2DFE22DDD8C', model: '00000000000KXPG00', os_flag: '' }
-          - { version_name: 'High_Sierra', board_id: 'Mac-7BA5B2D9E42DDD94', model: '00000000000J80300', os_flag: '' }
+        include: ${{ fromJSON(needs.setup.outputs.recovery) }}
 
     steps:
       - name: Download macrecovery.py
@@ -105,6 +190,77 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           path: ${{ steps.create_iso.outputs.compressed_file }}
+          compression-level: 0
+          retention-days: 90
+          archive: false
+
+  build-ipsw-iso:
+    needs: setup
+    if: needs.setup.outputs.ipsw == 'true'
+    name: IPSW ISO (latest Apple silicon restore image)
+    # Intel runners have the most free disk, the IPSW and its ISO are ~20GB each
+    runs-on: macos-15-intel
+    timeout-minutes: 80
+
+    steps:
+      - name: Find latest IPSW
+        id: ipsw
+        run: |
+          curl --retry 3 -fsSL -o catalog.xml "https://mesu.apple.com/assets/macos/com_apple_macOSIPSW/com_apple_macOSIPSW.xml"
+
+          python3 - >> $GITHUB_OUTPUT <<'EOF'
+          import plistlib
+
+          def restores(node):
+              if isinstance(node, dict):
+                  if 'FirmwareURL' in node and 'ProductVersion' in node:
+                      yield node
+                  for value in node.values():
+                      yield from restores(value)
+
+          with open('catalog.xml', 'rb') as f:
+              catalog = plistlib.load(f)
+
+          # Newest version, preferring entries that carry a SHA1 to verify against
+          latest = max(restores(catalog), key=lambda r: (
+              tuple(int(p) for p in r['ProductVersion'].split('.')), 'FirmwareSHA1' in r))
+          print(f"url={latest['FirmwareURL']}")
+          print(f"sha1={latest.get('FirmwareSHA1', '')}")
+          print(f"version={latest['ProductVersion']}")
+          print(f"build={latest['BuildVersion']}")
+          EOF
+
+          cat $GITHUB_OUTPUT
+
+      - name: Download IPSW
+        env:
+          URL: ${{ steps.ipsw.outputs.url }}
+          SHA1: ${{ steps.ipsw.outputs.sha1 }}
+        run: |
+          mkdir ipsw
+          FILE="ipsw/$(basename "$URL")"
+          curl --retry 5 --retry-delay 5 -fL -o "$FILE" "$URL"
+
+          if [ -n "$SHA1" ]; then
+            echo "$SHA1  $FILE" | shasum -a 1 -c -
+          fi
+
+      - name: Create IPSW ISO
+        id: create_iso
+        env:
+          VERSION: ${{ steps.ipsw.outputs.version }}
+          BUILD: ${{ steps.ipsw.outputs.build }}
+        run: |
+          ISO_FILE="macOS_${VERSION}_${BUILD}_IPSW.iso"
+
+          hdiutil makehybrid -hfs -udf -default-volume-name "macOS_${VERSION}_IPSW" -o "$ISO_FILE" ipsw
+          rm -rf ipsw
+          echo "iso_file=$ISO_FILE" >> $GITHUB_OUTPUT
+
+      - name: Upload IPSW ISO artifact
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.create_iso.outputs.iso_file }}
           compression-level: 0
           retention-days: 90
           archive: false

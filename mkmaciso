@@ -1215,18 +1215,23 @@ get_install_media_version() {
     local installer_path
     installer_path="$2"
     local version
-    version=$(defaults read "$volume_path/System/Library/CoreServices/SystemVersion" ProductVersion 2>/dev/null || true)
+    version=$(defaults read "$volume_path/System/Library/CoreServices/SystemVersion" ProductVersion 2>/dev/null) || version=""
 
     local shared_support
     shared_support="$installer_path/Contents/SharedSupport/SharedSupport.dmg"
     if [ -z "$version" ] && [ -f "$shared_support" ]; then
-        hdiutil attach -nobrowse -quiet -readonly -mountpoint "$WORK_DIR/SharedSupport_mnt" "$shared_support" >&2 || true
-        version=$(/usr/libexec/PlistBuddy -c "Print :Assets:0:OSVersion" \
-            "$WORK_DIR/SharedSupport_mnt/com_apple_MobileAsset_MacSoftwareUpdate/com_apple_MobileAsset_MacSoftwareUpdate.xml" 2>/dev/null || true)
-        detach_disk "$WORK_DIR/SharedSupport_mnt" >&2 || true
+        if hdiutil attach -nobrowse -readonly -mountpoint "$WORK_DIR/SharedSupport_mnt" "$shared_support" >&2; then
+            version=$(/usr/libexec/PlistBuddy -c "Print :Assets:0:OSVersion" \
+                "$WORK_DIR/SharedSupport_mnt/com_apple_MobileAsset_MacSoftwareUpdate/com_apple_MobileAsset_MacSoftwareUpdate.xml" 2>/dev/null) || version=""
+            detach_disk "$WORK_DIR/SharedSupport_mnt" >&2 || true
+        else
+            log_warn "Could not mount $shared_support to read the OS version" >&2
+        fi
     fi
 
-    echo "${version:-${DOWNLOADED_VERSION:-unknown}}"
+    # Tools like PlistBuddy print errors on stdout, only trust a plain version number
+    [[ "$version" =~ ^[0-9]+(\.[0-9]+)*$ ]] || version="${DOWNLOADED_VERSION:-unknown}"
+    echo "$version"
 }
 
 create_iso_10_12_and_later() {
