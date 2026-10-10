@@ -37,7 +37,7 @@ on:
           - 'Recovery'
           - 'IPSW'
       image_format:
-        description: "Full Installer format: ISO for virtual machines, DMG for USB drives."
+        description: "Image format: ISO for virtual machines, DMG for USB drives. DMG skips the IPSW, it only exists as an ISO."
         required: true
         type: choice
         default: 'Both'
@@ -121,8 +121,9 @@ jobs:
           if [ "$TYPE" = "All" ] || [ "$TYPE" = "Recovery" ]; then
             recovery=$(echo "$RECOVERY" | pick)
           fi
-          # The IPSW catalog only carries the latest release, which is Golden Gate
-          if { [ "$TYPE" = "All" ] || [ "$TYPE" = "IPSW" ]; } && { [ "$VERSION" = "All" ] || [ "$VERSION" = "Golden Gate" ]; }; then
+          # The IPSW catalog only carries the latest release, which is Golden Gate,
+          # and the IPSW is only packaged as an ISO
+          if { [ "$TYPE" = "All" ] || [ "$TYPE" = "IPSW" ]; } && { [ "$VERSION" = "All" ] || [ "$VERSION" = "Golden Gate" ]; } && [ "$FORMAT" != "DMG" ]; then
             ipsw=true
           fi
 
@@ -198,6 +199,7 @@ jobs:
 
       - name: Create Recovery ISO
         id: create_iso
+        if: inputs.image_format != 'DMG'
         run: |
           VERSION_NAME="${{ matrix.version_name }}"
           ISO_FILE="macOS_${VERSION_NAME}_Recovery.iso"
@@ -207,9 +209,29 @@ jobs:
           echo "compressed_file=${ISO_FILE}.zip" >> $GITHUB_OUTPUT
 
       - name: Upload Recovery ISO artifact
+        if: inputs.image_format != 'DMG'
         uses: actions/upload-artifact@v7
         with:
           path: ${{ steps.create_iso.outputs.compressed_file }}
+          compression-level: 0
+          retention-days: 90
+          archive: false
+
+      # Apple's untouched BaseSystem.dmg and chunklist, in the com.apple.recovery.boot
+      # layout OpenCore loads them from. Stored, not compressed, the DMG already is.
+      - name: Package Recovery DMG
+        id: package_dmg
+        if: inputs.image_format != 'ISO'
+        run: |
+          ZIP_FILE="macOS_${{ matrix.version_name }}_Recovery.dmg.zip"
+          zip -r -0 "$ZIP_FILE" com.apple.recovery.boot
+          echo "compressed_file=$ZIP_FILE" >> $GITHUB_OUTPUT
+
+      - name: Upload Recovery DMG artifact
+        if: inputs.image_format != 'ISO'
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.package_dmg.outputs.compressed_file }}
           compression-level: 0
           retention-days: 90
           archive: false
