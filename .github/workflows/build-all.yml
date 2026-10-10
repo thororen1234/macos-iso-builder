@@ -36,6 +36,15 @@ on:
           - 'Full Installer'
           - 'Recovery'
           - 'IPSW'
+      image_format:
+        description: "Full Installer format: ISO for virtual machines, DMG for USB drives."
+        required: true
+        type: choice
+        default: 'Both'
+        options:
+          - 'Both'
+          - 'ISO'
+          - 'DMG'
 
 jobs:
   # Work out which builds the inputs ask for, so unused versions don't each
@@ -55,6 +64,7 @@ jobs:
         env:
           VERSION: ${{ inputs.macos_version }}
           TYPE: ${{ inputs.build_type }}
+          FORMAT: ${{ inputs.image_format }}
         run: |
           FULL=$(cat <<'EOF'
           [
@@ -100,7 +110,13 @@ jobs:
           recovery='[]'
           ipsw=false
           if [ "$TYPE" = "All" ] || [ "$TYPE" = "Full Installer" ]; then
-            full=$(echo "$FULL" | pick)
+            case "$FORMAT" in
+              ISO) formats='["iso"]' ;;
+              DMG) formats='["dmg"]' ;;
+              *)   formats='["iso", "dmg"]' ;;
+            esac
+            # One job per version and format, a runner can't hold the installer plus both images
+            full=$(echo "$FULL" | pick | jq -c --argjson f "$formats" '[.[] as $v | $f[] | $v + {format: .}]')
           fi
           if [ "$TYPE" = "All" ] || [ "$TYPE" = "Recovery" ]; then
             recovery=$(echo "$RECOVERY" | pick)
@@ -117,7 +133,7 @@ jobs:
           {
             echo "## Builds for $VERSION ($TYPE)"
             echo ""
-            echo "- Full Installer: $(echo "$full" | jq -r 'map(.macos_version) | join(", ") | if . == "" then "none" else . end')"
+            echo "- Full Installer: $(echo "$full" | jq -r 'map(.macos_version + " " + .format) | join(", ") | if . == "" then "none" else . end')"
             echo "- Recovery: $(echo "$recovery" | jq -r 'map(.macos_version) | join(", ") | if . == "" then "none" else . end')"
             echo "- IPSW: $ipsw"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -125,7 +141,7 @@ jobs:
   build-full-installer:
     needs: setup
     if: needs.setup.outputs.full != '[]'
-    name: Full Installer (${{ matrix.macos_version }})
+    name: Full Installer (${{ matrix.macos_version }} ${{ matrix.format }})
     # Golden Gate is Apple silicon only, softwareupdate won't offer it on Intel
     runs-on: ${{ matrix.macos_version == 'Golden Gate' && 'macos-latest' || 'macos-15-intel' }}
     timeout-minutes: 80
@@ -141,8 +157,12 @@ jobs:
       - name: Create macOS image
         id: create_image
         run: |
-          ./mkmaciso "${{ matrix.macos_version }}" iso
-          echo "image_name=$(basename *.iso)" >> $GITHUB_OUTPUT
+          ./mkmaciso "${{ matrix.macos_version }}" "${{ matrix.format }}"
+          if [ "${{ matrix.format }}" == "iso" ]; then
+            echo "image_name=$(basename *.iso)" >> $GITHUB_OUTPUT
+          else
+            echo "image_name=$(basename *.dmg.img)" >> $GITHUB_OUTPUT
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
