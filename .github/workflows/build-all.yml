@@ -1,0 +1,98 @@
+name: Build all ISO images
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-full-installer:
+    if: github.repository_owner == 'thororen1234'
+    name: Full Installer (${{ matrix.macos_version }})
+    runs-on: macos-15-intel
+    timeout-minutes: 80
+    strategy:
+      fail-fast: false
+      matrix:
+        macos_version:
+          - 'Tahoe'
+          - 'Sequoia'
+          - 'Sonoma'
+          - 'Ventura'
+          - 'Monterey'
+          - 'Big Sur'
+          - 'Catalina'
+          - 'Mojave'
+          - 'High Sierra'
+          - 'Sierra'
+          - 'El Capitan'
+          - 'Yosemite'
+          - 'Mavericks'
+          - 'Mountain Lion'
+          - 'Lion'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Create macOS image
+        id: create_image
+        run: |
+          ./mkmaciso "${{ matrix.macos_version }}" iso
+          echo "image_name=$(basename *.iso)" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.create_image.outputs.image_name }}
+          compression-level: 0
+          retention-days: 90
+          archive: false
+
+  build-recovery-iso:
+    if: github.repository_owner == 'thororen1234'
+    name: Recovery (${{ matrix.version_name }})
+    runs-on: macos-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { version_name: 'Tahoe',       board_id: 'Mac-CFF7D910A743CAAF', model: '00000000000000000', os_flag: 'latest' }
+          - { version_name: 'Sequoia',     board_id: 'Mac-7BA5B2D9E42DDD94', model: '00000000000000000', os_flag: '' }
+          - { version_name: 'Sonoma',      board_id: 'Mac-827FAC58A8FDFA22', model: '00000000000000000', os_flag: '' }
+          - { version_name: 'Ventura',     board_id: 'Mac-B4831CEBD52A0C4C', model: '00000000000000000', os_flag: '' }
+          - { version_name: 'Monterey',    board_id: 'Mac-E43C1C25D4880AD6', model: '00000000000000000', os_flag: '' }
+          - { version_name: 'Big_Sur',     board_id: 'Mac-2BD1B31983FE1663', model: '00000000000000000', os_flag: '' }
+          - { version_name: 'Catalina',    board_id: 'Mac-CFF7D910A743CAAF', model: '00000000000PHCD00', os_flag: '' }
+          - { version_name: 'Mojave',      board_id: 'Mac-7BA5B2DFE22DDD8C', model: '00000000000KXPG00', os_flag: '' }
+          - { version_name: 'High_Sierra', board_id: 'Mac-7BA5B2D9E42DDD94', model: '00000000000J80300', os_flag: '' }
+
+    steps:
+      - name: Download macrecovery.py
+        run: |
+          curl --retry 3 --max-time 10 --connect-timeout 3 -OL "https://raw.githubusercontent.com/acidanthera/OpenCorePkg/master/Utilities/macrecovery/macrecovery.py"
+
+      - name: Download macOS Recovery
+        run: |
+          if [ -n "${{ matrix.os_flag }}" ]; then
+            script -q /dev/null python3 macrecovery.py -b "${{ matrix.board_id }}" -m "${{ matrix.model }}" -os "${{ matrix.os_flag }}" download
+          else
+            script -q /dev/null python3 macrecovery.py -b "${{ matrix.board_id }}" -m "${{ matrix.model }}" download
+          fi
+
+      - name: Create Recovery ISO
+        id: create_iso
+        run: |
+          VERSION_NAME="${{ matrix.version_name }}"
+          ISO_FILE="macOS_${VERSION_NAME}_Recovery.iso"
+
+          sudo hdiutil makehybrid -hfs -udf -default-volume-name "${VERSION_NAME}_Recovery" -o "$ISO_FILE" "com.apple.recovery.boot/BaseSystem.dmg"
+          zip -j "${ISO_FILE}.zip" "$ISO_FILE"
+          echo "compressed_file=${ISO_FILE}.zip" >> $GITHUB_OUTPUT
+
+      - name: Upload Recovery ISO artifact
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.create_iso.outputs.compressed_file }}
+          compression-level: 0
+          retention-days: 90
+          archive: false
