@@ -1,7 +1,7 @@
-name: Refresh forks list
+name: Refresh Forks List
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Run every 6 hours
+    - cron: "0 */6 * * *" # Run every 6 hours
   workflow_dispatch:
 
 jobs:
@@ -132,7 +132,7 @@ jobs:
           ---
 
           ## Recently Active Forks
-          
+
           | Recent Fork | Latest Build | Build Date | Fork Created |
           |-------------|--------------|------------|--------------|
           EOF

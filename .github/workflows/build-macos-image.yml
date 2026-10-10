@@ -1,4 +1,4 @@
-name: Build Full Installer ISO/DMG image
+name: Build Full Installer ISO/DMG Image
 
 on:
   workflow_dispatch:
@@ -8,31 +8,31 @@ on:
         required: true
         type: choice
         options:
-          - ''
-          - 'Golden Gate'
-          - 'Tahoe'
-          - 'Sequoia'
-          - 'Sonoma'
-          - 'Ventura'
-          - 'Monterey'
-          - 'Big Sur'
-          - 'Catalina'
-          - 'Mojave'
-          - 'High Sierra'
-          - 'Sierra'
-          - 'El Capitan'
-          - 'Yosemite'
-          - 'Mavericks'
-          - 'Mountain Lion'
-          - 'Lion'
+          - ""
+          - "Golden Gate"
+          - "Tahoe"
+          - "Sequoia"
+          - "Sonoma"
+          - "Ventura"
+          - "Monterey"
+          - "Big Sur"
+          - "Catalina"
+          - "Mojave"
+          - "High Sierra"
+          - "Sierra"
+          - "El Capitan"
+          - "Yosemite"
+          - "Mavericks"
+          - "Mountain Lion"
+          - "Lion"
       image_format:
         description: "Choose 'iso' for virtual machines, 'dmg' for flash to USB drive."
         required: true
         type: choice
         options:
-          - ''
-          - 'iso'
-          - 'dmg'
+          - ""
+          - "iso"
+          - "dmg"
       bypass_checks:
         description: "Skip the preflight checks (star requirement) and build right away."
         required: false

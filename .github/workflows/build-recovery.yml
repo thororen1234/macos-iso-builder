@@ -1,30 +1,30 @@
-name: Build Recovery ISO image
+name: Build Recovery ISO Image
 
 on:
   workflow_dispatch:
     inputs:
       macos_version:
-        description: 'Select a macOS version to build'
+        description: "Select a macOS version to build"
         required: true
         type: choice
         options:
-          - ''
-          - 'Tahoe'
-          - 'Sequoia'
-          - 'Sonoma'
-          - 'Ventura'
-          - 'Monterey'
-          - 'Big Sur'
-          - 'Catalina'
-          - 'Mojave'
-          - 'High Sierra'
+          - ""
+          - "Tahoe"
+          - "Sequoia"
+          - "Sonoma"
+          - "Ventura"
+          - "Monterey"
+          - "Big Sur"
+          - "Catalina"
+          - "Mojave"
+          - "High Sierra"
       bypass_checks:
         description: "Skip the preflight checks (star requirement) and build right away."
         required: false
         type: boolean
         default: false
       release_tag:
-        description: 'Optional: tag the build (e.g., v10.15) to upload it to Releases for long-term storage'
+        description: "Optional: tag the build (e.g., v10.15) to upload it to Releases for long-term storage"
         required: false
         type: string
 
@@ -157,7 +157,7 @@ jobs:
         id: download_recovery_image
         run: |
           echo "Downloading macOS ${{ steps.version_info.outputs.version_name }} recovery..."
-          
+
           if [ -n "${{ steps.version_info.outputs.os_flag }}" ]; then
             script -q /dev/null python3 macrecovery.py -b "${{ steps.version_info.outputs.board_id }}" -m "${{ steps.version_info.outputs.model }}" -os "${{ steps.version_info.outputs.os_flag }}" download
           else
