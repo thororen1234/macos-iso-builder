@@ -37,7 +37,7 @@ on:
           - "Recovery"
           - "IPSW"
       image_format:
-        description: "Image format: ISO for virtual machines, DMG for USB drives. DMG skips the IPSW, it only exists as an ISO."
+        description: "Image format: ISO for virtual machines, DMG for USB drives."
         required: true
         type: choice
         default: "Both"
@@ -121,9 +121,8 @@ jobs:
           if [ "$TYPE" = "All" ] || [ "$TYPE" = "Recovery" ]; then
             recovery=$(echo "$RECOVERY" | pick)
           fi
-          # The IPSW catalog only carries the latest release, which is Golden Gate,
-          # and the IPSW is only packaged as an ISO
-          if { [ "$TYPE" = "All" ] || [ "$TYPE" = "IPSW" ]; } && { [ "$VERSION" = "All" ] || [ "$VERSION" = "Golden Gate" ]; } && [ "$FORMAT" != "DMG" ]; then
+          # The IPSW catalog only carries the latest release, which is Golden Gate
+          if { [ "$TYPE" = "All" ] || [ "$TYPE" = "IPSW" ]; } && { [ "$VERSION" = "All" ] || [ "$VERSION" = "Golden Gate" ]; }; then
             ipsw=true
           fi
 
@@ -217,21 +216,45 @@ jobs:
           retention-days: 90
           archive: false
 
-      # Apple's untouched BaseSystem.dmg and chunklist, in the com.apple.recovery.boot
-      # layout OpenCore loads them from. Stored, not compressed, the DMG already is.
-      - name: Package Recovery DMG
-        id: package_dmg
+      # Raw GPT image of BaseSystem.dmg, like the Full Installer DMG: flash it
+      # to a USB drive with Rufus or dd and an Intel Mac boots into recovery
+      - name: Create Recovery DMG
+        id: create_dmg
         if: inputs.image_format != 'ISO'
         run: |
-          ZIP_FILE="macOS_${{ matrix.version_name }}_Recovery.dmg.zip"
-          zip -r -0 "$ZIP_FILE" com.apple.recovery.boot
-          echo "compressed_file=$ZIP_FILE" >> $GITHUB_OUTPUT
+          IMG_FILE="macOS_${{ matrix.version_name }}_Recovery.dmg.img"
+
+          hdiutil convert -quiet "com.apple.recovery.boot/BaseSystem.dmg" -format UDRW -o "recovery.dmg"
+          mv recovery.dmg "$IMG_FILE"
+          hdiutil imageinfo "$IMG_FILE" | grep -iE "^\s*(partition-scheme|Format):" || true
+
+          zip -j "${IMG_FILE}.zip" "$IMG_FILE"
+          echo "compressed_file=${IMG_FILE}.zip" >> $GITHUB_OUTPUT
 
       - name: Upload Recovery DMG artifact
         if: inputs.image_format != 'ISO'
         uses: actions/upload-artifact@v7
         with:
-          path: ${{ steps.package_dmg.outputs.compressed_file }}
+          path: ${{ steps.create_dmg.outputs.compressed_file }}
+          compression-level: 0
+          retention-days: 90
+          archive: false
+
+      # Apple's untouched BaseSystem.dmg and chunklist, in the com.apple.recovery.boot
+      # layout OpenCore loads them from. Stored, not compressed, the DMG already is.
+      - name: Package original recovery files
+        id: package_original
+        if: inputs.image_format != 'ISO'
+        run: |
+          ZIP_FILE="macOS_${{ matrix.version_name }}_Recovery_BaseSystem.zip"
+          zip -r -0 "$ZIP_FILE" com.apple.recovery.boot
+          echo "compressed_file=$ZIP_FILE" >> $GITHUB_OUTPUT
+
+      - name: Upload original recovery files artifact
+        if: inputs.image_format != 'ISO'
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.package_original.outputs.compressed_file }}
           compression-level: 0
           retention-days: 90
           archive: false
@@ -239,8 +262,8 @@ jobs:
   build-ipsw-iso:
     needs: setup
     if: needs.setup.outputs.ipsw == 'true'
-    name: IPSW ISO (latest Apple silicon restore image)
-    # Intel runners have the most free disk, the IPSW and its ISO are ~20GB each
+    name: IPSW (latest Apple silicon restore image)
+    # Intel runners have the most free disk, the IPSW and each copy of it are ~25GB
     runs-on: macos-15-intel
     timeout-minutes: 80
 
@@ -288,8 +311,11 @@ jobs:
             echo "$SHA1  $FILE" | shasum -a 1 -c -
           fi
 
+      # The ISO and DMG are both plain containers for the .ipsw. Build, upload and
+      # delete one before the next, the runner can't hold the IPSW plus two copies.
       - name: Create IPSW ISO
         id: create_iso
+        if: inputs.image_format != 'DMG'
         env:
           VERSION: ${{ steps.ipsw.outputs.version }}
           BUILD: ${{ steps.ipsw.outputs.build }}
@@ -298,13 +324,38 @@ jobs:
 
           echo "Wrapping the IPSW in $ISO_FILE, this takes a few minutes..."
           hdiutil makehybrid -hfs -udf -default-volume-name "macOS_${VERSION}_IPSW" -o "$ISO_FILE" ipsw
-          rm -rf ipsw
           echo "iso_file=$ISO_FILE" >> $GITHUB_OUTPUT
 
       - name: Upload IPSW ISO artifact
+        if: inputs.image_format != 'DMG'
         uses: actions/upload-artifact@v7
         with:
           path: ${{ steps.create_iso.outputs.iso_file }}
+          compression-level: 0
+          retention-days: 90
+          archive: false
+
+      - name: Create IPSW DMG
+        id: create_dmg
+        if: inputs.image_format != 'ISO'
+        env:
+          VERSION: ${{ steps.ipsw.outputs.version }}
+          BUILD: ${{ steps.ipsw.outputs.build }}
+        run: |
+          rm -f *_IPSW.iso
+          DMG_FILE="macOS_${VERSION}_${BUILD}_IPSW.dmg"
+
+          # Read-only and uncompressed, the IPSW is already a zip
+          echo "Wrapping the IPSW in $DMG_FILE, this takes a few minutes..."
+          hdiutil create -srcfolder ipsw -volname "macOS_${VERSION}_IPSW" -fs HFS+ -format UDRO -o "$DMG_FILE"
+          rm -rf ipsw
+          echo "dmg_file=$DMG_FILE" >> $GITHUB_OUTPUT
+
+      - name: Upload IPSW DMG artifact
+        if: inputs.image_format != 'ISO'
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.create_dmg.outputs.dmg_file }}
           compression-level: 0
           retention-days: 90
           archive: false
