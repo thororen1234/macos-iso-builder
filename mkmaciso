@@ -52,6 +52,7 @@ IMAGE_FORMAT="${2:-}"
 OUTPUT_PATH="${3:-}"
 RETRIES_COUNT=10
 FINAL_OUTPUT_PATH=""
+DOWNLOADED_VERSION=""
 DISK_ID=""
 
 # Get CPU architecture
@@ -936,6 +937,7 @@ download_modern_macos() {
     fi
     
     log_info "Found latest $version_name version: $selected_version_number"
+    DOWNLOADED_VERSION="$selected_version_number"
     log_info "Downloading and installing macOS $version_name installer (this may take a while)..."
     
     # Download with retries (max 4 times)
@@ -1204,6 +1206,29 @@ create_iso_dmg_10_15_alt_method() {
     fi
 }
 
+# Golden Gate install media has no SystemVersion.plist at its root, so fall back
+# to the OS version in the installer's SharedSupport.dmg asset catalog, then to
+# the version softwareupdate downloaded
+get_install_media_version() {
+    local volume_path
+    volume_path="$1"
+    local installer_path
+    installer_path="$2"
+    local version
+    version=$(defaults read "$volume_path/System/Library/CoreServices/SystemVersion" ProductVersion 2>/dev/null || true)
+
+    local shared_support
+    shared_support="$installer_path/Contents/SharedSupport/SharedSupport.dmg"
+    if [ -z "$version" ] && [ -f "$shared_support" ]; then
+        hdiutil attach -nobrowse -quiet -readonly -mountpoint "$WORK_DIR/SharedSupport_mnt" "$shared_support" >&2 || true
+        version=$(/usr/libexec/PlistBuddy -c "Print :Assets:0:OSVersion" \
+            "$WORK_DIR/SharedSupport_mnt/com_apple_MobileAsset_MacSoftwareUpdate/com_apple_MobileAsset_MacSoftwareUpdate.xml" 2>/dev/null || true)
+        detach_disk "$WORK_DIR/SharedSupport_mnt" >&2 || true
+    fi
+
+    echo "${version:-${DOWNLOADED_VERSION:-unknown}}"
+}
+
 create_iso_10_12_and_later() {
     local installer_path
     installer_path="$1"
@@ -1258,7 +1283,7 @@ create_iso_10_12_and_later() {
     
     # Extract the exact version number and append it to the file name
     local exact_version_number
-    exact_version_number=$(defaults read "/Volumes/$(get_installer_app_name "$version_num")/System/Library/CoreServices/SystemVersion" ProductVersion)
+    exact_version_number=$(get_install_media_version "/Volumes/$(get_installer_app_name "$version_num")" "$installer_path")
     FINAL_OUTPUT_PATH="${output_file%.iso}_$exact_version_number.iso"
     
     # Restore Info.plist
@@ -1390,7 +1415,7 @@ create_dmg_10_10_and_later() {
     
     # Extract the exact version number and append it to the file name
     local exact_version_number
-    exact_version_number=$(defaults read "/Volumes/$(get_installer_app_name "$version_num")/System/Library/CoreServices/SystemVersion" ProductVersion)
+    exact_version_number=$(get_install_media_version "/Volumes/$(get_installer_app_name "$version_num")" "$installer_path")
     FINAL_OUTPUT_PATH="${output_file%.dmg}_$exact_version_number.dmg.img"
     
     # Unmount
